@@ -31,6 +31,7 @@ from torch.utils.data import TensorDataset, DataLoader, RandomSampler, Sequentia
 from torch.utils.data.distributed import DistributedSampler
 
 import tokenization
+import test_train_split
 from modeling import BertConfig, BertForSequenceClassification
 from optimization import BERTAdam
 
@@ -162,7 +163,6 @@ class MnliProcessor(DataProcessor):
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
         
-
 class ColaProcessor(DataProcessor):
     """Processor for the CoLA data set (GLUE version)."""
 
@@ -191,6 +191,41 @@ class ColaProcessor(DataProcessor):
                 InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
         return examples
 
+class CtProcessor(DataProcessor):
+    """Processor for the Head CT Dataset"""
+    
+    def get_train_examples(self):
+        """See base class."""
+        return self._create_examples("train")
+
+    def get_dev_examples(self):
+        """See base class."""
+        return self._create_examples("dev")
+
+    def get_labels(self):
+        """See base class."""
+        return ["0", "1"]
+    
+    def _load_data(self):
+        return test_train_split.main()
+        
+    def _create_examples(self, set_type):
+        """
+        Creates examples for the training and dev sets
+        dataset_type should be either train, dev or test
+        """
+        train, dev, test, target_list = test_train_split.main()
+        dataset_dict = {'train':train, 'dev':dev, 'test':test}
+        examples = []
+        for accession_number,report_dict in dataset_dict[set_type].items():
+            guid = "%s-%s" % (set_type, accession_number)
+            text_a = tokenization.convert_to_unicode(report_dict['Report Text'])
+            targets = {k:v for k, v in report_dict['targets'].items() if v==1}
+            label = tokenization.convert_to_unicode(list(targets.keys()))
+            examples.append(
+                InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
+        return examples, target_list
+    
 
 def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer):
     """Loads a data file into a list of `InputBatch`s."""
@@ -198,7 +233,6 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
     label_map = {}
     for (i, label) in enumerate(label_list):
         label_map[label] = i
-
     features = []
     for (ex_index, example) in enumerate(examples):
         tokens_a = tokenizer.tokenize(example.text_a)
@@ -267,8 +301,12 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         assert len(input_ids) == max_seq_length
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
-
-        label_id = label_map[example.label]
+        # manage label lists that are longer than one:
+        label_id = [label_map[key] for key in example.label]
+        while len(label_id) < max_seq_length:
+            label_id.append(0)
+        assert len(label_id) == max_seq_length
+        
         if ex_index < 5:
             logger.info("*** Example ***")
             logger.info("guid: %s" % (example.guid))
@@ -278,7 +316,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
             logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
             logger.info(
                     "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-            logger.info("label: %s (id = %d)" % (example.label, label_id))
+            logger.info("label: {} (id = {})".format(example.label, label_id))
 
         features.append(
                 InputFeatures(
@@ -316,7 +354,7 @@ def main():
     parser.add_argument("--data_dir",
                         default=None,
                         type=str,
-                        required=True,
+                        required=False,
                         help="The input data dir. Should contain the .tsv files (or other data files) for the task.")
     parser.add_argument("--bert_config_file",
                         default=None,
@@ -335,9 +373,9 @@ def main():
                         required=True,
                         help="The vocabulary file that the BERT model was trained on.")
     parser.add_argument("--output_dir",
-                        default=None,
+                        default='/tmp/output',
                         type=str,
-                        required=True,
+                        required=False,
                         help="The output directory where the model checkpoints will be written.")
 
     ## Other parameters
@@ -414,6 +452,7 @@ def main():
         "cola": ColaProcessor,
         "mnli": MnliProcessor,
         "mrpc": MrpcProcessor,
+        "hct": CtProcessor,
     }
 
     if args.local_rank == -1 or args.no_cuda:
@@ -453,13 +492,16 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     task_name = args.task_name.lower()
-
+    
+    #### HARDCODE THIS TO BE JUST THE COLA VERSION OF IT
     if task_name not in processors:
         raise ValueError("Task not found: %s" % (task_name))
 
     processor = processors[task_name]()
-
-    label_list = processor.get_labels()
+    ####
+    
+    # label_list for CT Head is now contained in get_examples
+    #label_list = processor.get_labels()
 
     tokenizer = tokenization.FullTokenizer(
         vocab_file=args.vocab_file, do_lower_case=args.do_lower_case)
@@ -467,7 +509,7 @@ def main():
     train_examples = None
     num_train_steps = None
     if args.do_train:
-        train_examples = processor.get_train_examples(args.data_dir)
+        train_examples, label_list = processor.get_train_examples()
         num_train_steps = int(
             len(train_examples) / args.train_batch_size * args.num_train_epochs)
 
@@ -505,6 +547,7 @@ def main():
         all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
         all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
         all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
+        import pdb; pdb.set_trace()
         all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.long)
 
         train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
@@ -538,7 +581,7 @@ def main():
                     global_step += 1
 
     if args.do_eval:
-        eval_examples = processor.get_dev_examples(args.data_dir)
+        eval_examples, label_list = processor.get_dev_examples(args.data_dir)
         eval_features = convert_examples_to_features(
             eval_examples, label_list, args.max_seq_length, tokenizer)
 

@@ -22,14 +22,21 @@ import collections
 import unicodedata
 import six
 
-
 def convert_to_unicode(text):
     """Converts `text` to Unicode (if it's not already), assuming utf-8 input."""
     if six.PY3:
-        if isinstance(text, str):
-            return text
-        elif isinstance(text, bytes):
+        if isinstance(text, bytes):
             return text.decode("utf-8", "ignore")
+        elif isinstance(text, str):
+            return text
+        elif isinstance(text, list):
+            unicode_list = []
+            for item in text:
+                if isinstance(item, bytes):
+                    unicode_list.append(item.decode("utf-8", "ignore"))
+                elif isinstance(item, str):
+                    unicode_list.append(item)
+            return unicode_list
         else:
             raise ValueError("Unsupported string type: %s" % (type(text)))
     elif six.PY2:
@@ -214,7 +221,6 @@ class WordpieceTokenizer(object):
         Returns:
           A list of wordpiece tokens.
         """
-
         text = convert_to_unicode(text)
 
         output_tokens = []
