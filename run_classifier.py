@@ -220,6 +220,7 @@ class CtProcessor(DataProcessor):
         for accession_number,report_dict in dataset_dict[set_type].items():
             guid = "%s-%s" % (set_type, accession_number)
             text_a = tokenization.convert_to_unicode(report_dict['Report Text'])
+            # targets = {k:v for k, v in report_dict['targets'].items() if v==1}
             targets = {k:v for k, v in report_dict['targets'].items() if v==1}
             label = tokenization.convert_to_unicode(list(targets.keys()))
             examples.append(
@@ -301,11 +302,23 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         assert len(input_ids) == max_seq_length
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
+        
         # manage label lists that are longer than one:
-        label_id = [label_map[key] for key in example.label]
-        while len(label_id) < max_seq_length:
-            label_id.append(0)
-        assert len(label_id) == max_seq_length
+        # example_label_keys = [label_map[key] for key in example.label]
+        # while len(label_id) < len(label_list):
+        #     label_id.append(0)
+        # assert len(label_id) == len(label_list)
+        
+        # The below is a bit of a hacky fix from what we had before
+        # Attempting to do a binary 0/1 vector for BCELoss function later on down the line
+        example_label_keys = [label_map[key] for key in example.label]
+        label_id = [0]* len(label_list)
+        for id in example_label_keys:
+            label_id[id] = 1
+        assert len(label_id) == len(label_list)
+        
+        
+        
         
         if ex_index < 5:
             logger.info("*** Example ***")
@@ -493,15 +506,13 @@ def main():
 
     task_name = args.task_name.lower()
     
-    #### HARDCODE THIS TO BE JUST THE COLA VERSION OF IT
     if task_name not in processors:
         raise ValueError("Task not found: %s" % (task_name))
 
     processor = processors[task_name]()
-    ####
     
-    # label_list for CT Head is now contained in get_examples
-    #label_list = processor.get_labels()
+    # NOTE TO SELF: label_list for CT Head is now contained in get_examples
+    # NOTE TO SELF: label_list = processor.get_labels()
 
     tokenizer = tokenization.FullTokenizer(
         vocab_file=args.vocab_file, do_lower_case=args.do_lower_case)
@@ -547,10 +558,10 @@ def main():
         all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
         all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
         all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
-        import pdb; pdb.set_trace()
-        all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.long)
+        all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.float32)
 
         train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+        
         if args.local_rank == -1:
             train_sampler = RandomSampler(train_data)
         else:
@@ -562,6 +573,7 @@ def main():
             tr_loss = 0
             nb_tr_examples, nb_tr_steps = 0, 0
             for step, (input_ids, input_mask, segment_ids, label_ids) in enumerate(tqdm(train_dataloader, desc="Iteration")):
+                
                 input_ids = input_ids.to(device)
                 input_mask = input_mask.to(device)
                 segment_ids = segment_ids.to(device)
@@ -581,7 +593,7 @@ def main():
                     global_step += 1
 
     if args.do_eval:
-        eval_examples, label_list = processor.get_dev_examples(args.data_dir)
+        eval_examples, label_list = processor.get_dev_examples()
         eval_features = convert_examples_to_features(
             eval_examples, label_list, args.max_seq_length, tokenizer)
 
@@ -592,7 +604,7 @@ def main():
         all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
         all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
         all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
-        all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
+        all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.float32)
 
         eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
         if args.local_rank == -1:

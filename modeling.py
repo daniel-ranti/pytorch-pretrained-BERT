@@ -24,7 +24,7 @@ import math
 import six
 import torch
 import torch.nn as nn
-from torch.nn import CrossEntropyLoss, BCELoss
+from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
 
 def gelu(x):
     """Implementation of the gelu activation function.
@@ -400,9 +400,9 @@ class BertForSequenceClassification(nn.Module):
         _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask)
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
-
+        
         if labels is not None:
-            loss_fct = BCELoss()
+            loss_fct = BCEWithLogitsLoss()
             loss = loss_fct(logits, labels)
             return loss, logits
         else:
