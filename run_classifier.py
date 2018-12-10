@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""BERT finetuning runner."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -35,7 +34,7 @@ import test_train_split
 from modeling import BertConfig, BertForSequenceClassification
 from optimization import BERTAdam
 
-logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s', 
+logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S',
                     level = logging.INFO)
 logger = logging.getLogger(__name__)
@@ -162,7 +161,7 @@ class MnliProcessor(DataProcessor):
             examples.append(
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
-        
+
 class ColaProcessor(DataProcessor):
     """Processor for the CoLA data set (GLUE version)."""
 
@@ -193,7 +192,7 @@ class ColaProcessor(DataProcessor):
 
 class CtProcessor(DataProcessor):
     """Processor for the Head CT Dataset"""
-    
+
     def get_train_examples(self):
         """See base class."""
         return self._create_examples("train")
@@ -205,10 +204,10 @@ class CtProcessor(DataProcessor):
     def get_labels(self):
         """See base class."""
         return ["0", "1"]
-    
+
     def _load_data(self):
         return test_train_split.main()
-        
+
     def _create_examples(self, set_type):
         """
         Creates examples for the training and dev sets
@@ -226,7 +225,7 @@ class CtProcessor(DataProcessor):
             examples.append(
                 InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
         return examples, target_list
-    
+
 
 def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer):
     """Loads a data file into a list of `InputBatch`s."""
@@ -302,43 +301,31 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         assert len(input_ids) == max_seq_length
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
-        
-        # manage label lists that are longer than one:
-        # example_label_keys = [label_map[key] for key in example.label]
-        # while len(label_id) < len(label_list):
-        #     label_id.append(0)
-        # assert len(label_id) == len(label_list)
-        
-        # The below is a bit of a hacky fix from what we had before
-        # Attempting to do a binary 0/1 vector for BCELoss function later on down the line
+
         example_label_keys = [label_map[key] for key in example.label]
         label_id = [0]* len(label_list)
         for id in example_label_keys:
             label_id[id] = 1
         assert len(label_id) == len(label_list)
-        
-        
-        
-        
+
         if ex_index < 5:
             logger.info("*** Example ***")
             logger.info("guid: %s" % (example.guid))
             logger.info("tokens: %s" % " ".join(
-                    [tokenization.printable_text(x) for x in tokens]))
+                [tokenization.printable_text(x) for x in tokens]))
             logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
             logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
             logger.info(
-                    "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
+                "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
             logger.info("label: {} (id = {})".format(example.label, label_id))
 
         features.append(
-                InputFeatures(
-                        input_ids=input_ids,
-                        input_mask=input_mask,
-                        segment_ids=segment_ids,
-                        label_id=label_id))
+            InputFeatures(
+                input_ids=input_ids,
+                input_mask=input_mask,
+                segment_ids=segment_ids,
+                label_id=label_id))
     return features
-
 
 def _truncate_seq_pair(tokens_a, tokens_b, max_length):
     """Truncates a sequence pair in place to the maximum length."""
@@ -357,6 +344,7 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
             tokens_b.pop()
 
 def accuracy(out, labels):
+    import pdb; pdb.set_trace()
     outputs = np.argmax(out, axis=1)
     return np.sum(outputs==labels)
 
@@ -451,14 +439,14 @@ def main():
                         type=int,
                         default=-1,
                         help="local_rank for distributed training on gpus")
-    parser.add_argument('--seed', 
-                        type=int, 
+    parser.add_argument('--seed',
+                        type=int,
                         default=42,
                         help="random seed for initialization")
     parser.add_argument('--gradient_accumulation_steps',
                         type=int,
                         default=1,
-                        help="Number of updates steps to accumualte before performing a backward/update pass.")                       
+                        help="Number of updates steps to accumualte before performing a backward/update pass.")
     args = parser.parse_args()
 
     processors = {
@@ -480,7 +468,7 @@ def main():
 
     if args.accumulate_gradients < 1:
         raise ValueError("Invalid accumulate_gradients parameter: {}, should be >= 1".format(
-                            args.accumulate_gradients))
+                         args.accumulate_gradients))
 
     args.train_batch_size = int(args.train_batch_size / args.accumulate_gradients)
 
@@ -505,12 +493,12 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     task_name = args.task_name.lower()
-    
+
     if task_name not in processors:
         raise ValueError("Task not found: %s" % (task_name))
 
     processor = processors[task_name]()
-    
+
     # NOTE TO SELF: label_list for CT Head is now contained in get_examples
     # NOTE TO SELF: label_list = processor.get_labels()
 
@@ -561,7 +549,7 @@ def main():
         all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.float32)
 
         train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
-        
+
         if args.local_rank == -1:
             train_sampler = RandomSampler(train_data)
         else:
@@ -569,17 +557,26 @@ def main():
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size)
 
         model.train()
+
         for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
-            tr_loss = 0
+            tr_loss, tr_accuracy = 0, 0
             nb_tr_examples, nb_tr_steps = 0, 0
             for step, (input_ids, input_mask, segment_ids, label_ids) in enumerate(tqdm(train_dataloader, desc="Iteration")):
-                
+
                 input_ids = input_ids.to(device)
                 input_mask = input_mask.to(device)
                 segment_ids = segment_ids.to(device)
                 label_ids = label_ids.to(device)
 
-                loss, _ = model(input_ids, segment_ids, input_mask, label_ids)
+                loss, logits = model(input_ids, segment_ids, input_mask, label_ids)
+
+                logits = logits.detach().cpu().numpy()
+                label_ids = label_ids.to('cpu').numpy()
+                #make sure this is correct: is it on a per-label basis? or a per
+                tmp_tr_accuracy = accuracy(logits, label_ids)
+                tr_accuracy += tmp_tr_accuracy
+
+
                 if n_gpu > 1:
                     loss = loss.mean() # mean() to average on multi-gpu.
                 tr_loss += loss.item()
@@ -591,6 +588,12 @@ def main():
                     optimizer.step()    # We have accumulated enought gradients
                     model.zero_grad()
                     global_step += 1
+
+            epoch_loss = tr_loss / nb_tr_steps
+            epoch_accuracy = tr_accuracy / nb_tr_examples
+            logger.info("***** Epoch {} Results: *****".format(epoch))
+            logger.info("Loss: {}".format(epoch_loss))
+            logger.info("Accuracy: {}".format(epoch_accuracy))
 
     if args.do_eval:
         eval_examples, label_list = processor.get_dev_examples()
