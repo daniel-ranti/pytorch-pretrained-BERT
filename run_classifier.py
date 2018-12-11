@@ -35,9 +35,9 @@ import test_train_split
 from modeling import BertConfig, BertForSequenceClassification
 from optimization import BERTAdam
 
-logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
-                    datefmt = '%m/%d/%Y %H:%M:%S',
-                    level = logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
+                    datefmt='%m/%d/%Y %H:%M:%S',
+                    level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -97,6 +97,7 @@ class DataProcessor(object):
                 lines.append(line)
             return lines
 
+
 class CtProcessor(DataProcessor):
     """Processor for the Head CT Dataset"""
 
@@ -120,13 +121,13 @@ class CtProcessor(DataProcessor):
         dataset_type should be either train, dev or test
         """
         train, dev, test, target_list = test_train_split.main()
-        dataset_dict = {'train':train, 'dev':dev, 'test':test}
+        dataset_dict = {'train': train, 'dev': dev, 'test': test}
         examples = []
-        for accession_number,report_dict in dataset_dict[set_type].items():
+        for accession_number, report_dict in dataset_dict[set_type].items():
             guid = "%s-%s" % (set_type, accession_number)
             text_a = tokenization.convert_to_unicode(report_dict['Report Text'])
             # targets = {k:v for k, v in report_dict['targets'].items() if v==1}
-            targets = {k:v for k, v in report_dict['targets'].items() if v==1}
+            targets = {k: v for k, v in report_dict['targets'].items() if v == 1}
             label = tokenization.convert_to_unicode(list(targets.keys()))
             examples.append(
                 InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
@@ -209,7 +210,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         assert len(segment_ids) == max_seq_length
 
         example_label_keys = [label_map[key] for key in example.label]
-        label_id = [0]* len(label_list)
+        label_id = [0] * len(label_list)
         for id in example_label_keys:
             label_id[id] = 1
         assert len(label_id) == len(label_list)
@@ -233,6 +234,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                 label_id=label_id))
     return features
 
+
 def _truncate_seq_pair(tokens_a, tokens_b, max_length):
     """Truncates a sequence pair in place to the maximum length."""
 
@@ -249,15 +251,18 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
         else:
             tokens_b.pop()
 
+
 def main():
+
     parser = argparse.ArgumentParser()
 
-    ## Required parameters
+    # Required parameters
     parser.add_argument("--data_dir",
                         default=None,
                         type=str,
                         required=False,
-                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.")
+                        help="The input data dir. Should contain the .tsv files \n"
+                             "(or other data files) for the task.")
     parser.add_argument("--bert_config_file",
                         default=None,
                         type=str,
@@ -280,7 +285,7 @@ def main():
                         required=False,
                         help="The output directory where the model checkpoints will be written.")
 
-    ## Other parameters
+    # Other parameters
     parser.add_argument("--init_checkpoint",
                         default=None,
                         type=str,
@@ -288,7 +293,8 @@ def main():
     parser.add_argument("--do_lower_case",
                         default=False,
                         action='store_true',
-                        help="Whether to lower case the input text. True for uncased models, False for cased models.")
+                        help="Whether to lower case the input text. True for uncased models, \n"
+                             "False for cased models.")
     parser.add_argument("--max_seq_length",
                         default=128,
                         type=int,
@@ -322,8 +328,8 @@ def main():
     parser.add_argument("--warmup_proportion",
                         default=0.1,
                         type=float,
-                        help="Proportion of training to perform linear learning rate warmup for. "
-                             "E.g., 0.1 = 10%% of training.")
+                        help="Proportion of training to perform linear learning \n"
+                             "rate warmup for. E.g., 0.1 = 10%% of training.")
     parser.add_argument("--save_checkpoints_steps",
                         default=1000,
                         type=int,
@@ -335,7 +341,8 @@ def main():
     parser.add_argument("--accumulate_gradients",
                         type=int,
                         default=1,
-                        help="Number of steps to accumulate gradient on (divide the batch_size and accumulate)")
+                        help="Number of steps to accumulate gradient on (divide \n"
+                             "the batch_size and accumulate)")
     parser.add_argument("--local_rank",
                         type=int,
                         default=-1,
@@ -382,9 +389,8 @@ def main():
     bert_config = BertConfig.from_json_file(args.bert_config_file)
 
     if args.max_seq_length > bert_config.max_position_embeddings:
-        raise ValueError(
-            "Cannot use sequence length {} because the BERT model was only trained up to sequence length {}".format(
-            args.max_seq_length, bert_config.max_position_embeddings))
+        raise ValueError("Cannot use sequence length {} because the BERT model was only trained up to sequence length {}".format(
+                         args.max_seq_length, bert_config.max_position_embeddings))
 
     if os.path.exists(args.output_dir) and os.listdir(args.output_dir):
         raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
@@ -395,7 +401,7 @@ def main():
     if task_name not in processors:
         raise ValueError("Task not found: %s" % (task_name))
 
-    #Currently only functions properly with the head CT processor
+    # Currently only functions properly with the head CT processor
     # (multiclass mutlilabel evaluation)
     processor = processors[task_name]()
 
@@ -457,10 +463,10 @@ def main():
 
         for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
             # Accumulating all of the predictions and labels per epoch
-            epoch_predictions = np.empty((1,len(label_list)))
-            epoch_labels = np.empty((1,len(label_list)))
+            epoch_predictions = np.empty((1, len(label_list)))
+            epoch_labels = np.empty((1, len(label_list)))
 
-            tr_loss, tr_accuracy = 0, 0
+            tr_loss = 0
             nb_tr_examples, nb_tr_steps = 0, 0
             for step, (input_ids, input_mask, segment_ids, label_ids) in enumerate(tqdm(train_dataloader, desc="Iteration")):
 
@@ -480,26 +486,26 @@ def main():
                 epoch_labels = np.append(epoch_labels, label_ids, axis=0)
 
                 if n_gpu > 1:
-                    loss = loss.mean() # mean() to average on multi-gpu.
+                    loss = loss.mean()  # mean() to average on multi-gpu.
                 tr_loss += loss.item()
                 nb_tr_examples += input_ids.size(0)
                 nb_tr_steps += 1
                 loss.backward()
 
                 if (step + 1) % args.gradient_accumulation_steps == 0:
-                    optimizer.step()    # We have accumulated enought gradients
+                    optimizer.step()  # We have accumulated enought gradients
                     model.zero_grad()
                     global_step += 1
 
             epoch_loss = tr_loss / nb_tr_steps
-            #calculating per-label accuracy
-            epoch_labels = np.delete(epoch_labels, 0,0)
-            epoch_predictions = np.delete(epoch_predictions, 0,0)
+            # calculating per-label accuracy
+            epoch_labels = np.delete(epoch_labels, 0, 0)
+            epoch_predictions = np.delete(epoch_predictions, 0, 0)
             epoch_accuracy = classification_report(y_true=epoch_labels,
-                                  y_pred=epoch_predictions,
-                                  target_names=label_list,
-                                  output_dict=True)
-            import pdb; pdb.set_trace
+                                                   y_pred=epoch_predictions,
+                                                   target_names=label_list,
+                                                   output_dict=True)
+
             logger.info("***** Epoch {} Results: *****".format(epoch))
             logger.info("Loss: {}".format(epoch_loss))
             logger.info("Accuracy: {}".format(epoch_accuracy))
@@ -529,8 +535,8 @@ def main():
         eval_loss, eval_accuracy = 0, 0
         nb_eval_steps, nb_eval_examples = 0, 0
 
-        eval_predictions = np.empty((1,len(label_list)))
-        eval_labels = np.empty((1,len(label_list)))
+        eval_predictions = np.empty((1, len(label_list)))
+        eval_labels = np.empty((1, len(label_list)))
 
         for input_ids, input_mask, segment_ids, label_ids in eval_dataloader:
             input_ids = input_ids.to(device)
@@ -553,9 +559,9 @@ def main():
             nb_eval_examples += input_ids.size(0)
             nb_eval_steps += 1
 
-        eval_loss = eval_loss / nb_eval_steps #len(eval_dataloader)
-        eval_predictions = np.delete(eval_predictions, 0,0)
-        eval_labels = np.delete(eval_labels, 0,0)
+        eval_loss = eval_loss / nb_eval_steps  # len(eval_dataloader)
+        eval_predictions = np.delete(eval_predictions, 0, 0)
+        eval_labels = np.delete(eval_labels, 0, 0)
         eval_accuracy = classification_report(y_true=eval_predictions,
                                               y_pred=eval_labels,
                                               target_names=label_list,
@@ -564,7 +570,7 @@ def main():
         result = {'eval_loss': eval_loss,
                   'eval_accuracy': eval_accuracy,
                   'global_step': global_step,
-                  'loss': tr_loss/nb_tr_steps}#'loss': loss.item()}
+                  'loss': tr_loss/nb_tr_steps}  # 'loss': loss.item()}
 
         output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
         with open(output_eval_file, "w") as writer:
@@ -573,5 +579,7 @@ def main():
                 logger.info("  %s = %s", key, str(result[key]))
                 writer.write("%s = %s\n" % (key, str(result[key])))
 
+
 if __name__ == "__main__":
+
     main()
