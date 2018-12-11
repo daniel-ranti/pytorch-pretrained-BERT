@@ -97,100 +97,6 @@ class DataProcessor(object):
                 lines.append(line)
             return lines
 
-
-class MrpcProcessor(DataProcessor):
-    """Processor for the MRPC data set (GLUE version)."""
-
-    def get_train_examples(self, data_dir):
-        """See base class."""
-        logger.info("LOOKING AT {}".format(os.path.join(data_dir, "train.tsv")))
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
-
-    def get_dev_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
-
-    def get_labels(self):
-        """See base class."""
-        return ["0", "1"]
-
-    def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
-        examples = []
-        for (i, line) in enumerate(lines):
-            if i == 0:
-                continue
-            guid = "%s-%s" % (set_type, i)
-            text_a = tokenization.convert_to_unicode(line[3])
-            text_b = tokenization.convert_to_unicode(line[4])
-            label = tokenization.convert_to_unicode(line[0])
-            examples.append(
-                InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
-        return examples
-
-
-class MnliProcessor(DataProcessor):
-    """Processor for the MultiNLI data set (GLUE version)."""
-
-    def get_train_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
-
-    def get_dev_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "dev_matched.tsv")),
-            "dev_matched")
-
-    def get_labels(self):
-        """See base class."""
-        return ["contradiction", "entailment", "neutral"]
-
-    def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
-        examples = []
-        for (i, line) in enumerate(lines):
-            if i == 0:
-                continue
-            guid = "%s-%s" % (set_type, tokenization.convert_to_unicode(line[0]))
-            text_a = tokenization.convert_to_unicode(line[8])
-            text_b = tokenization.convert_to_unicode(line[9])
-            label = tokenization.convert_to_unicode(line[-1])
-            examples.append(
-                InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
-        return examples
-
-class ColaProcessor(DataProcessor):
-    """Processor for the CoLA data set (GLUE version)."""
-
-    def get_train_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
-
-    def get_dev_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
-
-    def get_labels(self):
-        """See base class."""
-        return ["0", "1"]
-
-    def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
-        examples = []
-        for (i, line) in enumerate(lines):
-            guid = "%s-%s" % (set_type, i)
-            text_a = tokenization.convert_to_unicode(line[3])
-            label = tokenization.convert_to_unicode(line[1])
-            examples.append(
-                InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
-        return examples
-
 class CtProcessor(DataProcessor):
     """Processor for the Head CT Dataset"""
 
@@ -202,11 +108,10 @@ class CtProcessor(DataProcessor):
         """See base class."""
         return self._create_examples("dev")
 
-    def get_labels(self):
-        """See base class."""
-        return ["0", "1"]
-
     def _load_data(self):
+        """
+        Returning the data as split in test_train_split
+        """
         return test_train_split.main()
 
     def _create_examples(self, set_type):
@@ -446,9 +351,6 @@ def main():
     args = parser.parse_args()
 
     processors = {
-        "cola": ColaProcessor,
-        "mnli": MnliProcessor,
-        "mrpc": MrpcProcessor,
         "hct": CtProcessor,
     }
 
@@ -493,6 +395,8 @@ def main():
     if task_name not in processors:
         raise ValueError("Task not found: %s" % (task_name))
 
+    #Currently only functions properly with the head CT processor
+    # (multiclass mutlilabel evaluation)
     processor = processors[task_name]()
 
     tokenizer = tokenization.FullTokenizer(
@@ -550,12 +454,12 @@ def main():
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size)
 
         model.train()
-        
+
         for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
             # Accumulating all of the predictions and labels per epoch
             epoch_predictions = np.empty((1,len(label_list)))
             epoch_labels = np.empty((1,len(label_list)))
-                                          
+
             tr_loss, tr_accuracy = 0, 0
             nb_tr_examples, nb_tr_steps = 0, 0
             for step, (input_ids, input_mask, segment_ids, label_ids) in enumerate(tqdm(train_dataloader, desc="Iteration")):
@@ -564,17 +468,17 @@ def main():
                 input_mask = input_mask.to(device)
                 segment_ids = segment_ids.to(device)
                 label_ids = label_ids.to(device)
-                
+
                 loss, logits = model(input_ids, segment_ids, input_mask, label_ids)
 
                 logits = logits.detach().cpu().numpy()
                 label_ids = label_ids.to('cpu').numpy()
-                
+
                 sig = torch.nn.Sigmoid()
                 predictions = sig(torch.Tensor(logits)) > 0.5
                 epoch_predictions = np.append(epoch_predictions, predictions.numpy(), axis=0)
                 epoch_labels = np.append(epoch_labels, label_ids, axis=0)
-                
+
                 if n_gpu > 1:
                     loss = loss.mean() # mean() to average on multi-gpu.
                 tr_loss += loss.item()
@@ -591,15 +495,14 @@ def main():
             #calculating per-label accuracy
             epoch_labels = np.delete(epoch_labels, 0,0)
             epoch_predictions = np.delete(epoch_predictions, 0,0)
-            epoch_accuracy = classification_report(y_true=epoch_labels, 
-                                  y_pred=epoch_predictions, 
-                                  target_names=label_list, 
+            epoch_accuracy = classification_report(y_true=epoch_labels,
+                                  y_pred=epoch_predictions,
+                                  target_names=label_list,
                                   output_dict=True)
             import pdb; pdb.set_trace
             logger.info("***** Epoch {} Results: *****".format(epoch))
             logger.info("Loss: {}".format(epoch_loss))
             logger.info("Accuracy: {}".format(epoch_accuracy))
-            
 
     if args.do_eval:
         eval_examples, label_list = processor.get_dev_examples()
@@ -625,10 +528,10 @@ def main():
         model.eval()
         eval_loss, eval_accuracy = 0, 0
         nb_eval_steps, nb_eval_examples = 0, 0
-        
+
         eval_predictions = np.empty((1,len(label_list)))
         eval_labels = np.empty((1,len(label_list)))
-            
+
         for input_ids, input_mask, segment_ids, label_ids in eval_dataloader:
             input_ids = input_ids.to(device)
             input_mask = input_mask.to(device)
@@ -639,7 +542,7 @@ def main():
 
             logits = logits.detach().cpu().numpy()
             label_ids = label_ids.to('cpu').numpy()
-            
+
             sig = torch.nn.Sigmoid()
             predictions = sig(torch.Tensor(logits)) > 0.5
             eval_predictions = np.append(eval_predictions, predictions.numpy(), axis=0)
@@ -653,17 +556,16 @@ def main():
         eval_loss = eval_loss / nb_eval_steps #len(eval_dataloader)
         eval_predictions = np.delete(eval_predictions, 0,0)
         eval_labels = np.delete(eval_labels, 0,0)
-        eval_accuracy = classification_report(y_true=eval_predictions, 
-                                              y_pred=eval_labels, 
-                                              target_names=label_list, 
+        eval_accuracy = classification_report(y_true=eval_predictions,
+                                              y_pred=eval_labels,
+                                              target_names=label_list,
                                               output_dict=True)
 
         result = {'eval_loss': eval_loss,
                   'eval_accuracy': eval_accuracy,
                   'global_step': global_step,
                   'loss': tr_loss/nb_tr_steps}#'loss': loss.item()}
-        
-        import pdb; pdb.set_trace()
+
         output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
         with open(output_eval_file, "w") as writer:
             logger.info("***** Eval results *****")

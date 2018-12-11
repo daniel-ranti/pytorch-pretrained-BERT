@@ -8,7 +8,6 @@ SEED = 'y7Xs9K7Eup'
 TARGET_PATH = '/docker/home/eko/data/ICAHNC1/meg_curated/NLP_Validation_Data_Set_coded.xlsx'
 REPORT_PATH = '/docker/home/eko/data/ICAHNC1/reports_raw/'
 
-
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
                     level=logging.INFO)
