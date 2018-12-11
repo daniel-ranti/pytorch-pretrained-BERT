@@ -25,9 +25,11 @@ import random
 from tqdm import tqdm, trange
 
 import numpy as np
+from sklearn.metrics import classification_report
 import torch
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
+from torchnet.meter import AUCMeter as AUC
 
 import tokenization
 import test_train_split
@@ -343,10 +345,20 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
         else:
             tokens_b.pop()
 
-def accuracy(out, labels):
+def accuracy(predictions, ground_truth, label_list):
+    """
+    Measures the AUC, true positive rate, and false positive rate per label, per epoch of training
+    """
     import pdb; pdb.set_trace()
-    outputs = np.argmax(out, axis=1)
-    return np.sum(outputs==labels)
+    # labels = the ground truth
+    # run the output through a sigmoid function
+    # use a cutoff of 0.5 to signify a hit for accuracy
+    # pass these to sklearn.metrics.
+    
+    classification_report(y_true=ground_truth, 
+                          y_pred=predictions, 
+                          target_names=label_list, 
+                          output_dict=True)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -557,8 +569,12 @@ def main():
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size)
 
         model.train()
-
+        
         for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
+            # Accumulating all of the predictions and labels per epoch
+            epoch_predictions = np.empty((1,len(label_list)))
+            epoch_labels = np.empty((1,len(label_list)))
+                                          
             tr_loss, tr_accuracy = 0, 0
             nb_tr_examples, nb_tr_steps = 0, 0
             for step, (input_ids, input_mask, segment_ids, label_ids) in enumerate(tqdm(train_dataloader, desc="Iteration")):
@@ -567,16 +583,17 @@ def main():
                 input_mask = input_mask.to(device)
                 segment_ids = segment_ids.to(device)
                 label_ids = label_ids.to(device)
-
+                
                 loss, logits = model(input_ids, segment_ids, input_mask, label_ids)
 
                 logits = logits.detach().cpu().numpy()
                 label_ids = label_ids.to('cpu').numpy()
-                #make sure this is correct: is it on a per-label basis? or a per
-                tmp_tr_accuracy = accuracy(logits, label_ids)
-                tr_accuracy += tmp_tr_accuracy
-
-
+                
+                sig = torch.nn.Sigmoid()
+                predictions = sig(torch.Tensor(logits)) > 0.5
+                epoch_predictions = np.append(epoch_predictions, predictions.numpy(), axis=0)
+                epoch_labels = np.append(epoch_labels, label_ids, axis=0)
+                
                 if n_gpu > 1:
                     loss = loss.mean() # mean() to average on multi-gpu.
                 tr_loss += loss.item()
@@ -590,10 +607,18 @@ def main():
                     global_step += 1
 
             epoch_loss = tr_loss / nb_tr_steps
-            epoch_accuracy = tr_accuracy / nb_tr_examples
+            #calculating per-label accuracy
+            epoch_labels = np.delete(epoch_labels, 0,0)
+            epoch_predictions = np.delete(epoch_predictions, 0,0)
+            epoch_accuracy = classification_report(y_true=epoch_labels, 
+                                  y_pred=epoch_predictions, 
+                                  target_names=label_list, 
+                                  output_dict=True)
+            import pdb; pdb.set_trace
             logger.info("***** Epoch {} Results: *****".format(epoch))
             logger.info("Loss: {}".format(epoch_loss))
             logger.info("Accuracy: {}".format(epoch_accuracy))
+            
 
     if args.do_eval:
         eval_examples, label_list = processor.get_dev_examples()
@@ -619,6 +644,10 @@ def main():
         model.eval()
         eval_loss, eval_accuracy = 0, 0
         nb_eval_steps, nb_eval_examples = 0, 0
+        
+        eval_predictions = np.empty((1,len(label_list)))
+        eval_labels = np.empty((1,len(label_list)))
+            
         for input_ids, input_mask, segment_ids, label_ids in eval_dataloader:
             input_ids = input_ids.to(device)
             input_mask = input_mask.to(device)
@@ -629,22 +658,31 @@ def main():
 
             logits = logits.detach().cpu().numpy()
             label_ids = label_ids.to('cpu').numpy()
-            tmp_eval_accuracy = accuracy(logits, label_ids)
+            
+            sig = torch.nn.Sigmoid()
+            predictions = sig(torch.Tensor(logits)) > 0.5
+            eval_predictions = np.append(eval_predictions, predictions.numpy(), axis=0)
+            eval_labels = np.append(eval_labels, label_ids, axis=0)
 
             eval_loss += tmp_eval_loss.mean().item()
-            eval_accuracy += tmp_eval_accuracy
 
             nb_eval_examples += input_ids.size(0)
             nb_eval_steps += 1
 
         eval_loss = eval_loss / nb_eval_steps #len(eval_dataloader)
-        eval_accuracy = eval_accuracy / nb_eval_examples #len(eval_dataloader)
+        eval_predictions = np.delete(eval_predictions, 0,0)
+        eval_labels = np.delete(eval_labels, 0,0)
+        eval_accuracy = classification_report(y_true=eval_predictions, 
+                                              y_pred=eval_labels, 
+                                              target_names=label_list, 
+                                              output_dict=True)
 
         result = {'eval_loss': eval_loss,
                   'eval_accuracy': eval_accuracy,
                   'global_step': global_step,
                   'loss': tr_loss/nb_tr_steps}#'loss': loss.item()}
-
+        
+        import pdb; pdb.set_trace()
         output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
         with open(output_eval_file, "w") as writer:
             logger.info("***** Eval results *****")
