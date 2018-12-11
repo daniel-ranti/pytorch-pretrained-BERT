@@ -29,7 +29,6 @@ from sklearn.metrics import classification_report
 import torch
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
-from torchnet.meter import AUCMeter as AUC
 
 import tokenization
 import test_train_split
@@ -345,21 +344,6 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
         else:
             tokens_b.pop()
 
-def accuracy(predictions, ground_truth, label_list):
-    """
-    Measures the AUC, true positive rate, and false positive rate per label, per epoch of training
-    """
-    import pdb; pdb.set_trace()
-    # labels = the ground truth
-    # run the output through a sigmoid function
-    # use a cutoff of 0.5 to signify a hit for accuracy
-    # pass these to sklearn.metrics.
-    
-    classification_report(y_true=ground_truth, 
-                          y_pred=predictions, 
-                          target_names=label_list, 
-                          output_dict=True)
-
 def main():
     parser = argparse.ArgumentParser()
 
@@ -510,9 +494,6 @@ def main():
         raise ValueError("Task not found: %s" % (task_name))
 
     processor = processors[task_name]()
-
-    # NOTE TO SELF: label_list for CT Head is now contained in get_examples
-    # NOTE TO SELF: label_list = processor.get_labels()
 
     tokenizer = tokenization.FullTokenizer(
         vocab_file=args.vocab_file, do_lower_case=args.do_lower_case)
