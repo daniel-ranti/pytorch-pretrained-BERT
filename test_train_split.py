@@ -5,8 +5,9 @@ import pandas as pd
 
 # a random seed to be used for the pigeonhole
 SEED = 'y7Xs9K7Eup'
-TARGET_PATH = '/docker/home/eko/data/ICAHNC1/meg_curated/NLP_Validation_Data_Set_coded.xlsx'
-REPORT_PATH = '/docker/home/eko/data/ICAHNC1/reports_raw/'
+TARGET_PATH = '/eko/ICAHNC1/meg_curated/NLP_Validation_Data_Set_coded.xlsx'
+REPORT_PATH = '/eko/ICAHNC1/reports_raw/'
+
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -24,7 +25,6 @@ def pigeonhole(number_of_groups, wedge, seed):
     """
     int_returned = int(hashlib.md5(",".join((str(wedge), str(seed))).encode('utf8')).hexdigest(), 16)
     return (int_returned % number_of_groups) + 1
-
 
 def _format_reports(targets, report_path=REPORT_PATH):
     """
@@ -49,6 +49,28 @@ def _format_reports(targets, report_path=REPORT_PATH):
     logger.info(hct_final.head(5))
     return hct_final.to_dict('index')
 
+def _read_targets(target_path=TARGET_PATH, positive_label_cutoff = 250):
+    """
+    Takes in a path to head CT targets and filters labels by the number of positive examples
+    """
+    targets = pd.read_excel(target_path)
+
+    data_distribution = {}
+    targets.reset_index()
+    for column in targets:
+        temp = targets[column].value_counts()
+        if temp.name != 'accession_id':
+            data_distribution[temp.name] = temp.to_dict()
+    target_distribution = pd.DataFrame(data_distribution).transpose()
+    target_distribution.drop(2, axis=1, inplace=True)
+    target_distribution.fillna(0, inplace=True)
+    filtered_target = target_distribution[target_distribution[1] > positive_label_cutoff]
+    filtered_target_list = filtered_target.index.tolist()
+    filtered_target_list.append('accession_id')
+    targets = targets[filtered_target_list]
+    targets.set_index('accession_id', inplace=True)
+    return targets
+
 
 def _format_targets(target_path=TARGET_PATH):
     """
@@ -57,15 +79,13 @@ def _format_targets(target_path=TARGET_PATH):
     target_dict: a dictionary of targets
     target_list: a list of target names
     """
-    targets = pd.read_excel(target_path)
-    targets.set_index('accession_id', inplace=True)
-    targets.drop(columns=['my_first_instrument_complete', 'redcap_data_access_group'], inplace=True)
+
+    targets = _read_targets()
     logger.info('Target Dataframe')
     logger.info(targets.head(5))
     # Get a list of targets
     target_list = targets.columns.tolist()
     return targets.to_dict('index'), target_list
-
 
 def split_datasets():
     """
@@ -73,26 +93,25 @@ def split_datasets():
     """
     target_dict, target_list = _format_targets()
     report_dict = _format_reports(targets=target_dict)
-    train_set = {}  # 60%
-    test_set = {}  # 20%
-    validation_set = {}  # 20%
+    train_set = {} #60%
+    test_set = {} #20%
+    validation_set = {} #20%
     for index, entry in report_dict.items():
-        # pigeonhole spits out a psudorandom reproducible distribution of buckets from 1 - 5
+        #pigeonhole spits out a psudorandom reproducible distribution of buckets from 1 - 5
         bucket = pigeonhole(5, index, SEED)
-        # 60% in the training set
+        #60% in the training set
         if bucket < 4:
             train_set[index] = entry
-            train_set[index]['targets'] = target_dict[index]
-        # 20% in the test set
+            train_set[index]['targets'] =  target_dict[index]
+        #20% in the test set
         elif bucket == 4:
             test_set[index] = entry
-            test_set[index]['targets'] = target_dict[index]
-        # 20% in the validation set
-        elif bucket == 5:
+            test_set[index]['targets'] =  target_dict[index]
+        #20% in the validation set
+        elif bucket ==5:
             validation_set[index] = entry
-            validation_set[index]['targets'] = target_dict[index]
+            validation_set[index]['targets'] =  target_dict[index]
     return train_set, validation_set, test_set, target_list
-
 
 def main():
     if not os.path.exists(REPORT_PATH) and os.path.exists(TARGET_PATH):
@@ -105,7 +124,6 @@ def main():
     logger.info('Test set: {}'.format(len(test_set.keys())))
     # DEBUG
     return train_set, validation_set, test_set, target_list
-
 
 if __name__ == "__main__":
 
